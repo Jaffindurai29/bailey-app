@@ -28,8 +28,9 @@ export default function WhatsAppDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [isGroupMode, setIsGroupMode] = useState(false);
+  const [mode, setMode] = useState<'person' | 'groups' | 'number'>('person');
   const [contacts, setContacts] = useState<any[]>([]);
+  const [targetNumber, setTargetNumber] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Load contacts from backend
@@ -45,8 +46,8 @@ export default function WhatsAppDashboard() {
   };
 
   useEffect(() => {
-    if (status === 'connected' && !isGroupMode) fetchContacts();
-  }, [status, isGroupMode]);
+    if (status === 'connected' && mode === 'person') fetchContacts();
+  }, [status, mode]);
 
   // Poll for status and QR if not connected
   useEffect(() => {
@@ -114,14 +115,20 @@ export default function WhatsAppDashboard() {
   };
 
   const sendMessage = async () => {
-    if (selectedJids.length === 0 || !message) return setError('Missing recipient or message');
+    let targets = [...selectedJids];
+    if (mode === 'number') {
+      if (!targetNumber) return setError('Please enter a target number');
+      targets = [targetNumber];
+    }
+
+    if (targets.length === 0 || !message) return setError('Missing recipient or message');
     setLoading(true);
     setError(null);
     setSuccess(null);
     
     let sentCount = 0;
     try {
-      for (const jid of selectedJids) {
+      for (const jid of targets) {
         const res = await fetch(`${BACKEND_URL}/message`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -136,14 +143,15 @@ export default function WhatsAppDashboard() {
         if (data.success) sentCount++;
         
         // Add a 2-second delay between messages to prevent spam detection
-        if (selectedJids.length > 1) {
+        if (targets.length > 1) {
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
       }
       
       setSuccess(`Successfully sent to ${sentCount} recipient(s)!`);
       setMessage('');
-      if (isGroupMode) setSelectedJids([]);
+      if (mode !== 'number') setSelectedJids([]);
+      if (mode === 'number') setTargetNumber('');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -162,7 +170,13 @@ export default function WhatsAppDashboard() {
       setMobile('');
       setQr(null);
       setGroups([]);
+      setContacts([]);
       setSelectedJids([]);
+      setMessage('');
+      setTargetNumber('');
+      setError(null);
+      setSuccess(null);
+      setSearchQuery('');
     } catch (err) {
       console.error('Logout error:', err);
     }
@@ -237,16 +251,22 @@ export default function WhatsAppDashboard() {
             <h2 className="text-lg font-semibold dark:text-white">Broadcast Message</h2>
             <div className="flex bg-[#f0f2f5] dark:bg-[#202c33] p-1 rounded-lg">
               <button
-                onClick={() => { setIsGroupMode(false); setSelectedJids([]); }}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${!isGroupMode ? 'bg-white dark:bg-[#2a3942] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500'}`}
+                onClick={() => { setMode('person'); setSelectedJids([]); }}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${mode === 'person' ? 'bg-white dark:bg-[#2a3942] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500'}`}
               >
                 Person
               </button>
               <button
-                onClick={() => { setIsGroupMode(true); setSelectedJids([]); }}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${isGroupMode ? 'bg-white dark:bg-[#2a3942] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500'}`}
+                onClick={() => { setMode('groups'); setSelectedJids([]); }}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${mode === 'groups' ? 'bg-white dark:bg-[#2a3942] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500'}`}
               >
                 Groups
+              </button>
+              <button
+                onClick={() => { setMode('number'); setSelectedJids([]); }}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${mode === 'number' ? 'bg-white dark:bg-[#2a3942] text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-gray-500'}`}
+              >
+                Number
               </button>
             </div>
           </div>
@@ -268,7 +288,7 @@ export default function WhatsAppDashboard() {
               )}
 
               <div className="grid grid-cols-1 gap-8">
-                {isGroupMode ? (
+                {mode === 'groups' ? (
                   <div className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
@@ -333,7 +353,7 @@ export default function WhatsAppDashboard() {
                       )}
                     </div>
                   </div>
-                ) : (
+                ) : mode === 'person' ? (
                   <div className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
@@ -391,6 +411,21 @@ export default function WhatsAppDashboard() {
                       )}
                     </div>
                   </div>
+                ) : (
+                  <div className="space-y-6">
+                    <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">Target Phone Number</label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="e.g. 6369427466 or +916369427466"
+                        value={targetNumber}
+                        onChange={(e) => setTargetNumber(e.target.value)}
+                        className="w-full px-4 py-4 bg-[#f0f2f5] dark:bg-[#202c33] border-none rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 dark:text-white transition-all shadow-sm"
+                      />
+                      <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    </div>
+                    <p className="text-xs text-gray-500 italic">Enter the number with or without country code.</p>
+                  </div>
                 )}
 
                 <div className="space-y-2">
@@ -407,11 +442,12 @@ export default function WhatsAppDashboard() {
 
             <div className="p-6 bg-[#f0f2f5] dark:bg-[#202c33] border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
               <div className="text-sm text-gray-500 italic">
-                {selectedJids.length > 0 ? `Selected: ${selectedJids.length} recipient(s)` : 'Select a recipient'}
+                {mode === 'number' ? (targetNumber ? `Target: ${targetNumber}` : 'Enter target number') : 
+                 selectedJids.length > 0 ? `Selected: ${selectedJids.length} recipient(s)` : 'Select a recipient'}
               </div>
               <button
                 onClick={sendMessage}
-                disabled={loading || status !== 'connected' || selectedJids.length === 0}
+                disabled={loading || status !== 'connected' || (mode !== 'number' && selectedJids.length === 0) || (mode === 'number' && !targetNumber)}
                 className="px-10 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold flex items-center gap-3 transition-all disabled:opacity-50 shadow-xl shadow-emerald-500/20 active:scale-95"
               >
                 {loading ? <RefreshCw className="animate-spin w-5 h-5" /> : (
